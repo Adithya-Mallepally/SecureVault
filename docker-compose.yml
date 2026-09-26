@@ -1,0 +1,36 @@
+version: "3.9"
+
+networks:
+  securevault-net:
+    driver: bridge
+
+volumes:
+  vault-mongo-data:
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: securevault-mongo
+    restart: always
+    volumes:
+      - vault-mongo-data:/data/db
+    networks:
+      - securevault-net
+    ports:
+      - "27018:27017"
+
+  api:
+    build: .
+    container_name: securevault-api
+    restart: always
+    environment:
+      - PORT=4000
+      - MONGO_URI=mongodb://mongodb:27017/securevault
+      - JWT_SECRET=supersecretjwtkey_zero_trust_securevault
+      - JWT_REFRESH_SECRET=superrefreshsecretjwtkey_securevault
+    ports:
+      - "4000:4000"
+    depends_on:
+      - mongodb
+    networks:
+      - securevault-net
