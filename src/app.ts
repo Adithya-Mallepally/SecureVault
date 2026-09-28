@@ -10,6 +10,7 @@ import helmet from "helmet";
 import cors from "cors";
 import { rateLimiter } from "./middleware/rate-limit";
 import { auditLogger } from "./middleware/audit";
+import { riskEngineMiddleware } from "./middleware/risk-engine";
 import authRoutes from "./routes/auth.routes";
 import userRoutes from "./routes/user.routes";
 import adminRoutes from "./routes/admin.routes";
@@ -32,8 +33,12 @@ app.use(express.json({ limit: "10kb" }));  // limit prevents large payload attac
 // ── Global rate limiter ──────────────────────────────────────────────────────
 app.use(rateLimiter);
 
+// ── Adaptive Zero Trust Risk Assessment ──────────────────────────────────────
+app.use(riskEngineMiddleware);
+
 // ── Audit logging (every request) ───────────────────────────────────────────
 app.use(auditLogger);
+
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use("/auth",  authRoutes);

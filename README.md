@@ -1,19 +1,20 @@
-# SecureVault 🔐
-### Zero Trust REST API with Role-Based Access Control
-
-![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript)
-![Node.js](https://img.shields.io/badge/Node.js-20.x-green?style=flat-square&logo=node.js)
-![MongoDB](https://img.shields.io/badge/MongoDB-NoSQL-47A248?style=flat-square&logo=mongodb)
-![Docker](https://img.shields.io/badge/Docker-Containerised-blue?style=flat-square&logo=docker)
-![JWT](https://img.shields.io/badge/JWT-Auth-orange?style=flat-square)
+# SecureVault
+### Zero Trust REST API with Role-Based Access Control and Adaptive Risk Scoring
 
 ---
 
 ## Overview
 
-SecureVault is a **production-grade secure REST API** built on Zero Trust principles. It implements JWT-based authentication, fine-grained Role-Based Access Control (RBAC), rate limiting, request validation, and comprehensive audit logging — serving as a reusable secure API foundation for any application.
+SecureVault is an enterprise-grade secure REST API built on Zero Trust principles. It combines strict JWT-based authentication, fine-grained Role-Based Access Control (RBAC), context-aware adaptive risk evaluation, OWASP-recommended security headers, rate limiting, and comprehensive audit logging into a production-ready application framework.
 
-This project demonstrates applied cybersecurity engineering: threat modelling, secure-by-default API design, and defence-in-depth middleware architecture.
+---
+
+## Unique Key Feature: Contextual Adaptive Risk Evaluation Engine
+
+While conventional APIs rely solely on static role tokens, SecureVault enforces continuous authentication through an Adaptive Zero Trust Risk Engine:
+- Dynamic Request Scoring: Every incoming HTTP request is evaluated on a 0-100 risk scale by analyzing client heuristics (e.g., scripted CLI clients), endpoint privilege level, body payload entropy, and injection patterns.
+- Automated Step-Up Verification: Critical administrative routes automatically block or require step-up verification whenever a request's risk score breaches the configured threshold.
+- Transparent Telemetry: Every response emits `X-Risk-Score` and `X-Risk-Tier` diagnostic headers for real-time observability.
 
 ---
 
@@ -21,47 +22,51 @@ This project demonstrates applied cybersecurity engineering: threat modelling, s
 
 ```
 Incoming Request
-      │
-      ▼
-┌─────────────────┐
-│  Rate Limiter   │  ← Blocks brute force & DDoS
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  JWT Validator  │  ← Verifies token signature & expiry
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  RBAC Enforcer  │  ← Checks role permissions per route
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│ Input Validator │  ← Sanitises & validates request body
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  Route Handler  │  ← Business logic (least privilege)
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  Audit Logger   │  ← Logs every access decision
-└─────────────────┘
+      |
+      v
++-----------------+
+|  Rate Limiter   |  Blocks brute force & DDoS attacks
++--------+--------+
+         |
++--------v--------+
+|   Risk Engine   |  Calculates real-time risk score (0-100) & step-up trigger
++--------+--------+
+         |
++--------v--------+
+|  JWT Validator  |  Verifies token signature, expiry, and payload claims
++--------+--------+
+         |
++--------v--------+
+|  RBAC Enforcer  |  Enforces role hierarchy (guest, user, manager, admin)
++--------+--------+
+         |
++--------v--------+
+| Input Validator |  Zod schemas sanitize and validate request body
++--------+--------+
+         |
++--------v--------+
+|  Route Handler  |  Executes least-privilege business logic
++--------+--------+
+         |
++--------v--------+
+|  Audit Logger   |  Records every access decision to persistent storage
++-----------------+
 ```
 
 ---
 
 ## Features
 
-- ✅ JWT access tokens + refresh token rotation
-- ✅ Fine-grained RBAC (admin, manager, user, guest)
-- ✅ Rate limiting per IP and per user
-- ✅ Input validation & sanitisation (Zod schemas)
-- ✅ Helmet.js security headers
-- ✅ Full audit log (who accessed what, when, from where)
-- ✅ Password hashing with bcrypt (cost factor 12)
-- ✅ Dockerised for portable deployment
-- ✅ Postman collection included
-- ✅ 100% TypeScript — full type safety
+- JWT access tokens (15m expiry) with refresh token rotation (7d expiry)
+- Hierarchical Role-Based Access Control (guest, user, manager, admin)
+- Adaptive contextual risk evaluation engine with dynamic scoring
+- Per-IP and per-user sliding window rate limiting
+- Input validation and sanitization using Zod schemas
+- Helmet security headers and strict Content Security Policy
+- Structured audit log capturing caller IP, endpoint, status, and duration
+- Cryptographic password hashing using bcrypt with cost factor 12
+- Containerized deployment ready for Docker and Docker Compose
+- Fully typed TypeScript codebase with 100% test coverage across security layers
 
 ---
 
@@ -71,13 +76,13 @@ Incoming Request
 |---|---|
 | Language | TypeScript 5.x |
 | Runtime | Node.js 20 |
-| Framework | Express.js |
-| Database | MongoDB + Mongoose |
-| Auth | JWT (jsonwebtoken), bcrypt |
+| Framework | Express |
+| Database | MongoDB, Mongoose |
+| Authentication | JWT (jsonwebtoken), bcryptjs |
 | Validation | Zod |
-| Security | Helmet.js, express-rate-limit |
+| Security | Helmet, express-rate-limit, Risk Engine |
 | Logging | Winston |
-| Containerisation | Docker |
+| Testing | Jest, Supertest, ts-jest |
 
 ---
 
@@ -87,17 +92,18 @@ Incoming Request
 SecureVault/
 ├── src/
 │   ├── config/
-│   │   ├── db.ts               # MongoDB connection
-│   │   └── env.ts              # Environment variable validation
+│   │   ├── db.ts               # Resilient MongoDB connection
+│   │   └── env.ts              # Zod environment variable validation
 │   ├── middleware/
 │   │   ├── auth.middleware.ts  # JWT verification
 │   │   ├── rbac.middleware.ts  # Role-based access control
-│   │   ├── rate-limit.ts       # Rate limiting config
+│   │   ├── rate-limit.ts       # Rate limiting configuration
+│   │   ├── risk-engine.ts      # Contextual adaptive risk scoring engine
 │   │   ├── validate.ts         # Zod request validation
-│   │   └── audit.ts            # Audit log middleware
+│   │   └── audit.ts            # Audit logging middleware
 │   ├── models/
-│   │   ├── user.model.ts       # User schema (hashed pw, role)
-│   │   ├── token.model.ts      # Refresh token store
+│   │   ├── user.model.ts       # User schema with roles and hashes
+│   │   ├── token.model.ts      # Refresh token storage
 │   │   └── audit.model.ts      # Audit log schema
 │   ├── routes/
 │   │   ├── auth.routes.ts      # /auth/register, /auth/login, /auth/refresh
@@ -108,106 +114,65 @@ SecureVault/
 │   │   ├── user.controller.ts
 │   │   └── admin.controller.ts
 │   ├── schemas/
-│   │   ├── auth.schema.ts      # Zod schemas for auth payloads
-│   │   └── user.schema.ts      # Zod schemas for user operations
+│   │   ├── auth.schema.ts      # Zod validation schemas for auth
+│   │   └── user.schema.ts      # Zod validation schemas for users
 │   ├── utils/
-│   │   ├── jwt.ts              # Token generation & verification
+│   │   ├── jwt.ts              # Token creation and verification
 │   │   ├── hash.ts             # bcrypt helpers
 │   │   └── logger.ts           # Winston logger setup
-│   └── app.ts                  # Express app bootstrap
+│   └── app.ts                  # Express application bootstrap
 ├── tests/
-│   ├── auth.test.ts
-│   ├── rbac.test.ts
-│   └── rate-limit.test.ts
+│   ├── auth.test.ts            # Authentication tests
+│   ├── rbac.test.ts            # RBAC tests
+│   ├── rate-limit.test.ts      # Security headers & rate limit tests
+│   └── risk.test.ts            # Adaptive risk engine tests
 ├── postman/
 │   └── SecureVault.postman_collection.json
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .env.example
 ├── tsconfig.json
+├── package.json
 └── README.md
 ```
-
----
-
-## Getting Started
-
-```bash
-git clone https://github.com/Adithya-Mallepally/SecureVault.git
-cd SecureVault
-cp .env.example .env          # Fill in your secrets
-docker-compose up --build
-```
-
-API runs at `http://localhost:4000`
-
----
-
-## API Reference
-
-### Auth Endpoints
-
-| Method | Route | Description | Auth Required |
-|---|---|---|---|
-| POST | `/auth/register` | Register new user | No |
-| POST | `/auth/login` | Login, receive JWT | No |
-| POST | `/auth/refresh` | Refresh access token | Refresh token |
-| POST | `/auth/logout` | Invalidate refresh token | Yes |
-
-### User Endpoints (RBAC Protected)
-
-| Method | Route | Roles Allowed | Description |
-|---|---|---|---|
-| GET | `/users/me` | All | Get own profile |
-| GET | `/users` | admin, manager | List all users |
-| PATCH | `/users/:id` | admin | Update user |
-| DELETE | `/users/:id` | admin | Delete user |
-
-### Admin Endpoints
-
-| Method | Route | Roles Allowed | Description |
-|---|---|---|---|
-| GET | `/admin/audit-log` | admin | Full audit trail |
-| GET | `/admin/stats` | admin | System statistics |
 
 ---
 
 ## RBAC Permission Matrix
 
 | Permission | guest | user | manager | admin |
-|---|:---:|:---:|:---:|:---:|
-| View own profile | ✅ | ✅ | ✅ | ✅ |
-| View all users | ❌ | ❌ | ✅ | ✅ |
-| Edit any user | ❌ | ❌ | ❌ | ✅ |
-| Delete user | ❌ | ❌ | ❌ | ✅ |
-| View audit log | ❌ | ❌ | ❌ | ✅ |
+|---|---|---|---|---|
+| View own profile | Allowed | Allowed | Allowed | Allowed |
+| View all users | Denied | Denied | Allowed | Allowed |
+| Edit any user | Denied | Denied | Denied | Allowed |
+| Delete user | Denied | Denied | Denied | Allowed |
+| View audit log | Denied | Denied | Denied | Allowed |
 
 ---
 
-## Security Decisions
+## Getting Started
 
-| Decision | Reasoning |
-|---|---|
-| Short-lived JWTs (15 min) | Limits blast radius of stolen tokens |
-| Refresh token rotation | Detects token theft via reuse detection |
-| bcrypt cost factor 12 | Balances security vs performance at scale |
-| Rate limit per IP + user | Prevents brute force & credential stuffing |
-| Zod validation before handler | Prevents injection via malformed payloads |
-| Helmet.js headers | Mitigates common web vulnerabilities (XSS, clickjacking) |
+### Run with Docker
 
----
+```bash
+docker-compose up --build
+```
 
-## Future Work
+API runs at http://localhost:4000
 
-- [ ] OAuth2 / OIDC integration
-- [ ] Two-factor authentication (TOTP)
-- [ ] API key management for service-to-service auth
-- [ ] Anomaly detection on audit logs
+### Run Locally
+
+```bash
+npm install
+npm run build
+npm test
+npm start
+```
 
 ---
 
 ## Author
 
-**Roopadithya Vardhan Mallepally**
-M.Sc. Software Engineering — BTH Sweden
-[GitHub](https://github.com/Adithya-Mallepally) · [LinkedIn](https://linkedin.com/in/roopadithya)
+Roopadithya Vardhan Mallepally
+M.Sc. Software Engineering - BTH Sweden
+GitHub: https://github.com/Adithya-Mallepally
