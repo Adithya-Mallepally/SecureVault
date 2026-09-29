@@ -66,7 +66,7 @@ Incoming Request
 - Structured audit log capturing caller IP, endpoint, status, and duration
 - Cryptographic password hashing using bcrypt with cost factor 12
 - Containerized deployment ready for Docker and Docker Compose
-- Fully typed TypeScript codebase with 100% test coverage across security layers
+- Fully typed TypeScript codebase with 13 automated tests (4 suites) and 70.8% line coverage (88.4% across security middleware)
 
 ---
 
@@ -147,6 +147,28 @@ SecureVault/
 | Edit any user | Denied | Denied | Denied | Allowed |
 | Delete user | Denied | Denied | Denied | Allowed |
 | View audit log | Denied | Denied | Denied | Allowed |
+
+---
+
+## Automated Test Coverage
+
+Verified with `npm test -- --coverage` (Jest 29, ts-jest, Supertest):
+
+| Test Suite | Test Cases | What Is Tested |
+|---|---|---|
+| `auth.test.ts` | 4 | Health endpoint, schema validation, registration flow, login rejection |
+| `rbac.test.ts` | 5 | User self-lookup, role-based route blocking (user/manager/admin hierarchy) |
+| `rate-limit.test.ts` | 2 | OWASP security headers, rate-limit response headers |
+| `risk.test.ts` | 2 | Baseline risk scoring, CLI user-agent risk elevation |
+| **Total** | **13** | **All passing, 0 failures** |
+
+| Coverage Layer | Line Coverage |
+|---|---|
+| **Security Middleware** (risk engine, RBAC, JWT, rate limiter, audit, validation) | **88.4%** |
+| Models (User, Token, AuditLog) | 100% |
+| Routes & Schemas | 100% |
+| Controllers (auth, user, admin) | 37.5% |
+| **Overall** | **70.8%** |
 
 ---
 
