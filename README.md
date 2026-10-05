@@ -66,7 +66,7 @@ Incoming Request
 - Structured audit log capturing caller IP, endpoint, status, and duration
 - Cryptographic password hashing using bcrypt with cost factor 12
 - Containerized deployment ready for Docker and Docker Compose
-- Fully typed TypeScript codebase with 13 automated tests (4 suites) and 70.8% line coverage (88.4% across security middleware)
+- Fully typed TypeScript codebase with 29 automated tests (4 suites) and 83.1% line coverage (93.3% across security middleware)
 
 ---
 
@@ -156,19 +156,44 @@ Verified with `npm test -- --coverage` (Jest 29, ts-jest, Supertest):
 
 | Test Suite | Test Cases | What Is Tested |
 |---|---|---|
-| `auth.test.ts` | 4 | Health endpoint, schema validation, registration flow, login rejection |
-| `rbac.test.ts` | 5 | User self-lookup, role-based route blocking (user/manager/admin hierarchy) |
+| `auth.test.ts` | 12 | Health endpoint, schema validation, privilege escalation defense, user registration, conflict handling, password verification, disabled account rejection, token rotation, revoked token blocking |
+| `rbac.test.ts` | 10 | User self-lookup, role-based route blocking (user/manager/admin), role promotion by admin, self-deletion prevention, managed user deletion, audit trail inspection |
+| `risk.test.ts` | 5 | Baseline risk scoring, CLI user-agent elevation, global injection attack blocking, high-risk step-up triggers, step-up token validation |
 | `rate-limit.test.ts` | 2 | OWASP security headers, rate-limit response headers |
-| `risk.test.ts` | 2 | Baseline risk scoring, CLI user-agent risk elevation |
-| **Total** | **13** | **All passing, 0 failures** |
+| **Total** | **29** | **All passing, 0 failures** |
 
 | Coverage Layer | Line Coverage |
 |---|---|
-| **Security Middleware** (risk engine, RBAC, JWT, rate limiter, audit, validation) | **88.4%** |
-| Models (User, Token, AuditLog) | 100% |
-| Routes & Schemas | 100% |
-| Controllers (auth, user, admin) | 37.5% |
-| **Overall** | **70.8%** |
+| **Security Middleware** (risk engine, RBAC, JWT, rate limiter, audit, validation) | **93.3%** |
+| Routes & Schemas | **100%** |
+| Controllers (auth, user, admin) | **80.8%** |
+| Utilities (hash, jwt, logger) | **100%** |
+| **Overall** | **83.1%** |
+
+---
+
+## Security Hardening and Vulnerability Mitigations
+
+1. Self-Privilege Escalation Defense:
+   - Self-registration schema strictly restricts role assignment to standard unprivileged roles ('user', 'guest').
+   - Administrative and manager roles can only be granted by existing authenticated administrators via PATCH /users/:id.
+
+2. Refresh Token Revocation & Session Invalidation:
+   - Refresh tokens are actively validated against revocation state in persistent storage.
+   - Calling POST /auth/logout immediately revokes the active token. Replay attempts with revoked or stale refresh tokens are rejected with 401 Unauthorized.
+   - Enforces Refresh Token Rotation: every successful token refresh revokes the old token and issues a newly tracked token pair with unique JWT IDs (RFC 7519 jti).
+
+3. Inactive and Suspended Account Enforcement:
+   - Authentication and token refresh flows actively check user activation status. Deactivated or suspended accounts are rejected with 403 Forbidden.
+
+4. Global Injection Pattern Defense:
+   - The adaptive risk engine inspects payload signatures across all application endpoints, immediately terminating malicious probes with 400 Bad Request.
+
+5. Administrative Step-Up Verification:
+   - High-risk requests targeting administrative routes require step-up authentication proof via the X-Step-Up-Token header.
+
+6. Account Lockout & Self-Deletion Guardrails:
+   - Administrative endpoints prevent administrators from deleting their own active accounts.
 
 ---
 

@@ -1,7 +1,4 @@
 import { Request, Response } from "express";
-import mongoose from "mongoose";
-import { UserModel } from "../models/user.model";
-import { TokenModel } from "../models/token.model";
 import { hashPassword, comparePassword } from "../utils/hash";
 import {
   generateAccessToken,
@@ -9,45 +6,52 @@ import {
   verifyRefreshToken,
   TokenPayload,
 } from "../utils/jwt";
+import * as store from "../models/store";
+import { Role } from "../middleware/rbac.middleware";
 
 export async function register(req: Request, res: Response): Promise<void> {
   try {
     const { username, email, password, role } = req.body;
 
-    if (mongoose.connection.readyState === 1) {
-      const existing = await UserModel.findOne({ $or: [{ email }, { username }] });
-      if (existing) {
-        res.status(409).json({ error: "Conflict", message: "Username or email is already taken." });
-        return;
-      }
+    const existingUser = await store.findUserByIdentifier(username);
+    const existingEmail = await store.findUserByIdentifier(email);
+    if (existingUser || existingEmail) {
+      res.status(409).json({ error: "Conflict", message: "Username or email is already taken." });
+      return;
     }
+
+    // Defensive check: self-registration is strictly restricted to standard roles ('user' or 'guest')
+    // Administrative roles ('admin', 'manager') can only be granted by existing administrators
+    const assignedRole: Role = role === "guest" ? "guest" : "user";
 
     const passwordHash = await hashPassword(password);
-    let userId = new mongoose.Types.ObjectId().toString();
-
-    if (mongoose.connection.readyState === 1) {
-      const user = await UserModel.create({
-        username,
-        email,
-        passwordHash,
-        role: role || "user",
-      });
-      userId = user._id.toString();
-    }
-
-    const payload: TokenPayload = {
-      userId,
+    const user = await store.createUser({
       username,
       email,
-      role: role || "user",
+      passwordHash,
+      role: assignedRole,
+      isActive: true,
+    });
+
+    const payload: TokenPayload = {
+      userId: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
     };
 
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
 
+    await store.saveRefreshToken({
+      userId: user.id,
+      token: refreshToken,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+
     res.status(201).json({
       message: "Registration successful",
-      user: { id: userId, username, email, role: payload.role },
+      user: { id: user.id, username: user.username, email: user.email, role: user.role },
       accessToken,
       refreshToken,
     });
@@ -60,15 +64,18 @@ export async function login(req: Request, res: Response): Promise<void> {
   try {
     const { identifier, password } = req.body;
 
-    let user: any = null;
-    if (mongoose.connection.readyState === 1) {
-      user = await UserModel.findOne({
-        $or: [{ email: identifier }, { username: identifier }],
-      });
-    }
-
+    const user = await store.findUserByIdentifier(identifier);
     if (!user) {
       res.status(401).json({ error: "Unauthorized", message: "Invalid credentials" });
+      return;
+    }
+
+    // Defensive check: Prevent deactivated/disabled accounts from authenticating
+    if (user.isActive === false) {
+      res.status(403).json({
+        error: "Forbidden",
+        message: "Account is disabled. Contact system administrator.",
+      });
       return;
     }
 
@@ -79,7 +86,7 @@ export async function login(req: Request, res: Response): Promise<void> {
     }
 
     const payload: TokenPayload = {
-      userId: user._id.toString(),
+      userId: user.id,
       username: user.username,
       email: user.email,
       role: user.role,
@@ -88,17 +95,15 @@ export async function login(req: Request, res: Response): Promise<void> {
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
 
-    if (mongoose.connection.readyState === 1) {
-      await TokenModel.create({
-        userId: user._id,
-        token: refreshToken,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      });
-    }
+    await store.saveRefreshToken({
+      userId: user.id,
+      token: refreshToken,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
 
     res.json({
       message: "Login successful",
-      user: { id: user._id, username: user.username, email: user.email, role: user.role },
+      user: { id: user.id, username: user.username, email: user.email, role: user.role },
       accessToken,
       refreshToken,
     });
@@ -110,20 +115,56 @@ export async function login(req: Request, res: Response): Promise<void> {
 export async function refresh(req: Request, res: Response): Promise<void> {
   try {
     const { refreshToken } = req.body;
-    const decoded = verifyRefreshToken(refreshToken);
+    if (!refreshToken) {
+      res.status(400).json({ error: "Bad Request", message: "Refresh token is required" });
+      return;
+    }
 
-    const newAccessToken = generateAccessToken({
-      userId: decoded.userId,
-      username: decoded.username,
-      email: decoded.email,
-      role: decoded.role,
-    });
+    let decoded: TokenPayload;
+    try {
+      decoded = verifyRefreshToken(refreshToken);
+    } catch (err) {
+      res.status(401).json({ error: "Unauthorized", message: "Invalid or expired refresh token" });
+      return;
+    }
 
-    const newRefreshToken = generateRefreshToken({
-      userId: decoded.userId,
-      username: decoded.username,
-      email: decoded.email,
-      role: decoded.role,
+    // Strict validation: Verify token has not been revoked in the persistence store
+    const storedToken = await store.findRefreshToken(refreshToken);
+    if (!storedToken || storedToken.revoked || new Date(storedToken.expiresAt) < new Date()) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message: "Refresh token has been revoked or expired.",
+      });
+      return;
+    }
+
+    // Verify associated user account exists and remains active
+    const user = await store.findUserById(decoded.userId);
+    if (!user || user.isActive === false) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message: "User account is inactive or no longer exists.",
+      });
+      return;
+    }
+
+    // Refresh Token Rotation: Revoke previous token to mitigate replay / token theft
+    await store.revokeRefreshToken(refreshToken);
+
+    const payload: TokenPayload = {
+      userId: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+    };
+
+    const newAccessToken = generateAccessToken(payload);
+    const newRefreshToken = generateRefreshToken(payload);
+
+    await store.saveRefreshToken({
+      userId: user.id,
+      token: newRefreshToken,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
     res.json({
@@ -132,15 +173,15 @@ export async function refresh(req: Request, res: Response): Promise<void> {
       refreshToken: newRefreshToken,
     });
   } catch (err) {
-    res.status(401).json({ error: "Invalid refresh token", details: (err as Error).message });
+    res.status(500).json({ error: "Token refresh error", details: (err as Error).message });
   }
 }
 
 export async function logout(req: Request, res: Response): Promise<void> {
   try {
     const { refreshToken } = req.body;
-    if (refreshToken && mongoose.connection.readyState === 1) {
-      await TokenModel.updateOne({ token: refreshToken }, { revoked: true });
+    if (refreshToken) {
+      await store.revokeRefreshToken(refreshToken);
     }
     res.json({ message: "Logout successful" });
   } catch (err) {

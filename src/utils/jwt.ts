@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { env } from "../config/env";
 import { Role } from "../middleware/rbac.middleware";
 
@@ -10,11 +11,17 @@ export interface TokenPayload {
 }
 
 export function generateAccessToken(payload: TokenPayload): string {
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: "15m" });
+  return jwt.sign(payload, env.JWT_SECRET, {
+    expiresIn: "15m",
+    jwtid: crypto.randomUUID(),
+  });
 }
 
 export function generateRefreshToken(payload: TokenPayload): string {
-  return jwt.sign(payload, env.JWT_REFRESH_SECRET, { expiresIn: "7d" });
+  return jwt.sign(payload, env.JWT_REFRESH_SECRET, {
+    expiresIn: "7d",
+    jwtid: crypto.randomUUID(),
+  });
 }
 
 export function verifyAccessToken(token: string): TokenPayload {

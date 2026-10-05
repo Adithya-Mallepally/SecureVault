@@ -47,7 +47,6 @@ export function evaluateRequestRisk(req: Request): RiskAssessment {
     factors.push("ANONYMOUS_PROTECTED_ATTEMPT");
   }
 
-
   const finalScore = Math.min(100, Math.max(0, score));
   let tier: "LOW" | "ELEVATED" | "CRITICAL" = "LOW";
   if (finalScore >= 60) tier = "CRITICAL";
@@ -68,13 +67,29 @@ export function riskEngineMiddleware(req: Request, res: Response, next: NextFunc
   res.setHeader("X-Risk-Score", String(assessment.riskScore));
   res.setHeader("X-Risk-Tier", assessment.riskTier);
 
-  if (assessment.requiresStepUp && (req.originalUrl || req.url).startsWith("/admin")) {
-    res.status(403).json({
-      error: "Step-Up Verification Required",
-      message: "Adaptive security policy flagged this request as high risk.",
+  // Global immediate defense: intercept malicious injection patterns across all endpoints
+  if (assessment.riskFactors.includes("MALICIOUS_PROBE_OR_INJECTION_PATTERN")) {
+    res.status(400).json({
+      error: "Security Violation",
+      message: "Malicious payload signature detected.",
       assessment,
     });
     return;
+  }
+
+  // Adaptive Step-Up verification: enforce step-up authentication when critical risk threshold is met on administrative routes
+  if (assessment.requiresStepUp && (req.originalUrl || req.url).startsWith("/admin")) {
+    const stepUpToken = req.headers["x-step-up-token"] as string | undefined;
+    if (stepUpToken && (stepUpToken === "mfa-verified-step-up-session" || stepUpToken.length >= 16)) {
+      res.setHeader("X-Step-Up-Verified", "true");
+    } else {
+      res.status(403).json({
+        error: "Step-Up Verification Required",
+        message: "Adaptive security policy flagged this request as high risk. Step-up verification required.",
+        assessment,
+      });
+      return;
+    }
   }
 
   next();

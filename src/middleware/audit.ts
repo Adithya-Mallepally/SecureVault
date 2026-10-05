@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import mongoose from "mongoose";
-import { AuditLogModel } from "../models/audit.model";
+import * as store from "../models/store";
 import { logger } from "../utils/logger";
 
 export function auditLogger(req: Request, res: Response, next: NextFunction): void {
@@ -21,17 +20,16 @@ export function auditLogger(req: Request, res: Response, next: NextFunction): vo
       userId,
     });
 
-    if (mongoose.connection.readyState === 1) {
-      AuditLogModel.create({
+    store
+      .addAuditLog({
         userId,
         ipAddress: req.ip || req.socket.remoteAddress || "unknown",
         method: req.method,
         endpoint: req.originalUrl || req.url,
         statusCode: res.statusCode,
         userAgent: req.headers["user-agent"] || "unknown",
-        timestamp: new Date(),
-      }).catch((err) => logger.warn(`Failed to persist audit log: ${err.message}`));
-    }
+      })
+      .catch((err) => logger.warn(`Failed to persist audit log: ${err.message}`));
 
     return originalEnd.apply(res, args as any);
   };

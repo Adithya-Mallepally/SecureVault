@@ -1,14 +1,9 @@
 import { Request, Response } from "express";
-import mongoose from "mongoose";
-import { AuditLogModel } from "../models/audit.model";
-import { UserModel } from "../models/user.model";
+import * as store from "../models/store";
 
 export async function getAuditLogs(req: Request, res: Response): Promise<void> {
   try {
-    let logs: any[] = [];
-    if (mongoose.connection.readyState === 1) {
-      logs = await AuditLogModel.find().sort({ timestamp: -1 }).limit(100);
-    }
+    const logs = await store.getAuditLogs(100);
     res.json({ count: logs.length, logs });
   } catch (err) {
     res.status(500).json({ error: "Audit log query error", details: (err as Error).message });
@@ -17,12 +12,8 @@ export async function getAuditLogs(req: Request, res: Response): Promise<void> {
 
 export async function getStats(req: Request, res: Response): Promise<void> {
   try {
-    let totalUsers = 0;
-    let totalAuditEvents = 0;
-    if (mongoose.connection.readyState === 1) {
-      totalUsers = await UserModel.countDocuments();
-      totalAuditEvents = await AuditLogModel.countDocuments();
-    }
+    const totalUsers = await store.countUsers();
+    const totalAuditEvents = await store.countAuditLogs();
 
     res.json({
       systemStatus: "healthy",
