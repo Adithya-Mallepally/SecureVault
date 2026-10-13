@@ -170,6 +170,8 @@ Verified with `npm test -- --coverage` (Jest 29, ts-jest, Supertest):
 | Utilities (hash, jwt, logger) | **100%** |
 | **Overall** | **83.1%** |
 
+Detailed assertion documentation and runtime metrics are recorded in [TEST_REPORT.md](TEST_REPORT.md).
+
 ---
 
 ## Security Hardening and Vulnerability Mitigations
